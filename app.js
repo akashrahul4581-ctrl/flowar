@@ -22,35 +22,39 @@ class FlowARController {
         this.scene.add(light);
 
         // State Machine
-        this.state = 'SCANNING'; // SCANNING -> PLACING -> MARKING
-        this.placedModels = [];
+        this.state = 'POSITIONING'; // POSITIONING -> MARKING
+        this.hardwareModel = null;
+        this.holeMarkers = [];
         this.holeCount = 0;
 
-        // Setup AR Session
-        this.setupXR();
+        // Setup UI First
         this.setupUI();
-
-        window.addEventListener('resize', this.onWindowResize.bind(this));
 
         // Voice Synth Initialization
         this.synth = window.speechSynthesis;
         this.isVoiceEnabled = false;
+
+        // Setup AR Session
+        this.setupXR();
+
+        // Create the model
+        this.createHardwareModel();
+
+        window.addEventListener('resize', this.onWindowResize.bind(this));
     }
 
     // --- Voice Guidance Helper ---
     speak(text) {
         if (!this.synth || !this.isVoiceEnabled) return;
 
-        // Cancel any ongoing speech to immediately start the new instruction
         if (this.synth.speaking) {
             this.synth.cancel();
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.95; // Slightly slower for clarity
+        utterance.rate = 0.95;
         utterance.pitch = 1.0;
 
-        // Prefer a clear English voice if available
         const voices = this.synth.getVoices();
         const preferredVoice = voices.find(v => v.lang.includes('en') && (v.name.includes('Google') || v.name.includes('Samantha')));
         if (preferredVoice) {
@@ -60,56 +64,72 @@ class FlowARController {
         this.synth.speak(utterance);
     }
 
+    createHardwareModel() {
+        const geometry = new THREE.BoxGeometry(0.3, 0.05, 0.5);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x4caf50,
+            roughness: 0.7,
+            metalness: 0.2
+        });
+
+        this.hardwareModel = new THREE.Mesh(geometry, material);
+
+        const edges = new THREE.EdgesGeometry(geometry);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f3ff, linewidth: 2 }));
+        this.hardwareModel.add(line);
+
+        // Initially hide until AR starts
+        this.hardwareModel.visible = false;
+        this.scene.add(this.hardwareModel);
+    }
+
     setupXR() {
-        // Create the "Start AR" button injected by Three.js
+        // Request no special features, just standard AR camera overlay
         const arButton = ARButton.createButton(this.renderer, {
-            requiredFeatures: ['hit-test'],
             optionalFeatures: ['dom-overlay'],
             domOverlay: { root: document.getElementById('ui-layer') }
         });
 
-        // Browsers require a user interaction to unlock the Speech API.
-        // We bind it to the AR session start button click.
         arButton.addEventListener('click', () => {
             this.isVoiceEnabled = true;
-            // Speak a silent utterance to unlock audio context on mobile
             const unlock = new SpeechSynthesisUtterance('');
             this.synth.speak(unlock);
         });
 
         document.body.appendChild(arButton);
 
-        // Notify user about status
         this.updateStatus("Waiting for AR Start");
 
         this.renderer.xr.addEventListener('sessionstart', () => {
-            document.getElementById('ui-layer').style.pointerEvents = 'none'; // Let XR handle taps initially
-            this.updateStatus("Scanning Surface");
-            this.setInstruction("Step 1: Scan Desk", "Move your phone slowly over the table until a white ring appears.");
+            this.updateStatus("Position Model");
+            this.ui.controls.classList.remove('hidden');
 
-            // Trigger first voice instruction
+            // In POSITIONING state, attach the model exactly 0.5m in front of the camera
+            // We do this by adding it to a pivot that follows the camera
+            this.hardwareModel.position.set(0, -0.1, -0.6); // 60cm away, slightly down
+            this.camera.add(this.hardwareModel);
+            this.scene.add(this.camera); // Ensure camera is in scene
+
+            this.hardwareModel.visible = true;
+
             setTimeout(() => {
-                this.speak("Welcome to Flow A R. Step 1: Point your camera at your desk and move your phone slowly until you see the white circular tracker.");
+                this.speak("Welcome. The hardware block forms instantly. Aim your camera at your desk and tap Place Here on your screen to anchor it.");
             }, 1000);
+        });
+
+        this.renderer.xr.addEventListener('sessionend', () => {
+            if (this.state === 'POSITIONING') {
+                this.camera.remove(this.hardwareModel);
+            }
+            this.hardwareModel.visible = false;
+            this.ui.controls.classList.add('hidden');
+            this.ui.dataPanel.classList.add('hidden');
         });
 
         // Controller (handles screen taps in AR)
         this.controller = this.renderer.xr.getController(0);
         this.controller.addEventListener('select', this.onSelect.bind(this));
         this.scene.add(this.controller);
-
-        // Reticle (The white ring for hit testing)
-        this.reticle = new THREE.Mesh(
-            new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
-            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })
-        );
-        this.reticle.matrixAutoUpdate = false;
-        this.reticle.visible = false;
-        this.scene.add(this.reticle);
-
-        // Hit Test Request logic
-        this.hitTestSource = null;
-        this.hitTestSourceRequested = false;
 
         // Render Loop
         this.renderer.setAnimationLoop(this.render.bind(this));
@@ -124,11 +144,13 @@ class FlowARController {
             angleX: document.getElementById('data-angle-x'),
             angleY: document.getElementById('data-angle-y'),
             holes: document.getElementById('data-holes'),
+            btnPlace: document.getElementById('btn-place'),
             btnReset: document.getElementById('btn-reset'),
             btnFinish: document.getElementById('btn-finish'),
             controls: document.getElementById('action-controls')
         };
 
+        this.ui.btnPlace.addEventListener('click', () => this.placeModel());
         this.ui.btnReset.addEventListener('click', () => this.resetSimulation());
         this.ui.btnFinish.addEventListener('click', () => this.finishSimulation());
     }
@@ -142,58 +164,49 @@ class FlowARController {
         this.ui.desc.textContent = desc;
     }
 
+    placeModel() {
+        if (this.state !== 'POSITIONING') return;
+
+        // Detach from camera and append directly to the world scene
+        // We capture its current world matrix before detaching
+        const worldPosition = new THREE.Vector3();
+        const worldQuaternion = new THREE.Quaternion();
+        const worldScale = new THREE.Vector3();
+
+        this.hardwareModel.getWorldPosition(worldPosition);
+        this.hardwareModel.getWorldQuaternion(worldQuaternion);
+        this.hardwareModel.getWorldScale(worldScale);
+
+        this.camera.remove(this.hardwareModel);
+
+        this.hardwareModel.position.copy(worldPosition);
+        this.hardwareModel.quaternion.copy(worldQuaternion);
+        this.hardwareModel.scale.copy(worldScale);
+
+        this.scene.add(this.hardwareModel);
+
+        this.state = 'MARKING';
+        this.updateStatus("Model Anchored");
+        this.setInstruction("Step 2: Mark Holes & Check Angle", "Tap on the surface of the green block to mark 3 drill holes. Observe the angle data.");
+
+        this.ui.btnPlace.classList.add('hidden');
+        this.ui.btnReset.classList.remove('hidden');
+        this.ui.dataPanel.classList.remove('hidden');
+
+        this.speak("Hardware Anchored. Step 2: Look at the data panel to ensure it is sitting flat, then tap the top of the block three times to mark your pilot holes.");
+    }
+
     onSelect() {
-        if (this.state === 'SCANNING' && this.reticle.visible) {
-            // STEP 1 to 2: Place the model at the reticle's exact transform
-            this.placeModel(this.reticle.matrix);
-
-            this.state = 'MARKING';
-            this.updateStatus("Model Anchored");
-            this.setInstruction("Step 2: Mark Holes & Check Angle", "Tap on the surface of the green block to mark drill holes. Observe the angle data.");
-
-            this.ui.dataPanel.classList.remove('hidden');
-            this.ui.controls.classList.remove('hidden');
-
-            this.speak("Target locked. the virtual hardware has been placed. Step 2: Ensure the X-axis angle is at zero degrees so it sits flat, then tap the top of the block three times to mark your pilot holes.");
-
-        }
-        else if (this.state === 'MARKING') {
+        if (this.state === 'MARKING') {
             // Raycast from the controller to the placed model to mark a hole
             this.markHole();
         }
     }
 
-    placeModel(matrix) {
-        // Create an advanced lookalilke of a piece of wood/hardware
-        const geometry = new THREE.BoxGeometry(0.3, 0.05, 0.5); // 30cm x 5cm x 50cm approx
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x4caf50, // Greenish to indicate it's active
-            roughness: 0.7,
-            metalness: 0.2
-        });
+    updateAngleCalculation() {
+        if (!this.hardwareModel) return;
 
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.applyMatrix4(matrix);
-        // Slightly raise it so it sits ON the table, not IN it
-        mesh.translateY(0.025);
-
-        // Add specific "target" zones visually
-        const edges = new THREE.EdgesGeometry(geometry);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f3ff, linewidth: 2 }));
-        mesh.add(line);
-
-        this.scene.add(mesh);
-        this.placedModels.push(mesh);
-
-        // Calculate Initial Angle
-        this.updateAngleCalculation(mesh);
-    }
-
-    updateAngleCalculation(mesh) {
-        // Calculate the object's rotation relative to the world
-        // In carpentry, we usually care if it's perfectly flat (X/Z) and how it's yawed (Y)
-        const euler = new THREE.Euler().setFromQuaternion(mesh.quaternion);
-
+        const euler = new THREE.Euler().setFromQuaternion(this.hardwareModel.quaternion);
         const toDegrees = (rad) => Math.abs(Math.round(rad * (180 / Math.PI)));
 
         const degX = toDegrees(euler.x);
@@ -202,7 +215,6 @@ class FlowARController {
         this.ui.angleX.textContent = `${degX}°`;
         this.ui.angleY.textContent = `${degY}°`;
 
-        // Feedback logic: 0 degrees X means it's flat on table
         if (degX < 5) {
             this.ui.angleX.className = "success-text";
         } else {
@@ -211,9 +223,8 @@ class FlowARController {
     }
 
     markHole() {
-        if (this.placedModels.length === 0 || this.holeCount >= 3) return;
+        if (this.holeCount >= 3) return;
 
-        // Perform a raycast from the controller to the model
         const tempMatrix = new THREE.Matrix4();
         tempMatrix.identity().extractRotation(this.controller.matrixWorld);
 
@@ -221,34 +232,31 @@ class FlowARController {
         raycaster.ray.origin.setFromMatrixPosition(this.controller.matrixWorld);
         raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
 
-        const intersects = raycaster.intersectObjects(this.placedModels, false);
+        // Check intersection purely against the hardware block
+        const intersects = raycaster.intersectObject(this.hardwareModel, false);
 
         if (intersects.length > 0) {
             const hit = intersects[0];
 
-            // Create a Red Drill Marker at the hit point
             const markerGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.005, 16);
             const markerMat = new THREE.MeshBasicMaterial({ color: 0xff003c });
             const marker = new THREE.Mesh(markerGeo, markerMat);
 
             marker.position.copy(hit.point);
-            // Align marker to the face normal
             const n = hit.face.normal.clone();
             n.transformDirection(hit.object.matrixWorld);
             n.add(hit.point);
             marker.lookAt(n);
-            marker.rotateX(Math.PI / 2); // Cylinder stands up
+            marker.rotateX(Math.PI / 2);
 
             this.scene.add(marker);
-            this.placedModels.push(marker); // Keep track to clear later
+            this.holeMarkers.push(marker);
 
             this.holeCount++;
             this.ui.holes.textContent = `${this.holeCount} / 3`;
 
-            // Haptic Feedback if supported
             if (navigator.vibrate) navigator.vibrate(50);
 
-            // Voice Feedback for Hole Markers
             if (this.holeCount === 1) {
                 this.speak("One hole marked.");
             } else if (this.holeCount === 2) {
@@ -259,25 +267,37 @@ class FlowARController {
                 this.setInstruction("Step 3: Verify & Complete", "You have marked all necessary holes. Verify the angles and finish.");
                 this.ui.btnFinish.classList.remove('hidden');
                 this.updateStatus("Verification Ready");
-                this.speak("Three holes marked. Step 3: Please verify the angle data points. If everything is aligned correctly, press the Complete Verification button.");
+                this.speak("Three holes marked. Verification ready. Please verify the angle data points. If everything is aligned correctly, press the Complete Verification button.");
             }
         }
     }
 
     resetSimulation() {
-        this.placedModels.forEach(m => this.scene.remove(m));
-        this.placedModels = [];
+        // Clear holes
+        this.holeMarkers.forEach(m => this.scene.remove(m));
+        this.holeMarkers = [];
         this.holeCount = 0;
-        this.state = 'SCANNING';
+
+        // Pick the hardware block back up
+        this.scene.remove(this.hardwareModel);
+
+        // Reset transform to be attached to camera
+        this.hardwareModel.position.set(0, -0.1, -0.6);
+        this.hardwareModel.rotation.set(0, 0, 0);
+        this.camera.add(this.hardwareModel);
+
+        this.state = 'POSITIONING';
 
         this.ui.holes.textContent = "0 / 3";
         this.ui.dataPanel.classList.add('hidden');
-        this.ui.controls.classList.add('hidden');
-        this.ui.btnFinish.classList.add('hidden');
 
-        this.setInstruction("Step 1: Scan Desk", "Move your phone slowly over the table until a white ring appears.");
-        this.updateStatus("Scanning Surface");
-        this.speak("Simulation reset. Please scan your desk again.");
+        this.ui.btnReset.classList.add('hidden');
+        this.ui.btnFinish.classList.add('hidden');
+        this.ui.btnPlace.classList.remove('hidden');
+
+        this.setInstruction("Step 1: Position Model", "The 3D block will float in front of you. Aim your camera at a flat surface and tap Place Here to anchor it.");
+        this.updateStatus("Position Model");
+        this.speak("Simulation reset. The hardware has returned to your screen.");
     }
 
     finishSimulation() {
@@ -296,51 +316,9 @@ class FlowARController {
     }
 
     render(timestamp, frame) {
-        if (frame) {
-            const referenceSpace = this.renderer.xr.getReferenceSpace();
-            const session = this.renderer.xr.getSession();
-
-            // Setup hit testing if not done
-            if (this.hitTestSourceRequested === false) {
-                this.hitTestSourceRequested = true;
-                session.requestReferenceSpace('viewer').then((viewerSpace) => {
-                    session.requestHitTestSource({ space: viewerSpace }).then((source) => {
-                        this.hitTestSource = source;
-                    }).catch(console.error);
-                }).catch(console.error);
-
-                session.addEventListener('end', () => {
-                    this.hitTestSourceRequested = false;
-                    this.hitTestSource = null;
-                });
-            }
-
-            // Perform Hit Test
-            if (this.hitTestSource) {
-                const hitTestResults = frame.getHitTestResults(this.hitTestSource);
-
-                if (hitTestResults.length > 0 && this.state === 'SCANNING') {
-                    const hit = hitTestResults[0];
-                    this.reticle.visible = true;
-                    // Safely get the pose
-                    const pose = hit.getPose(referenceSpace);
-                    if (pose) {
-                        this.reticle.matrix.fromArray(pose.transform.matrix);
-                        this.updateStatus("Surface Detected - Tap to Anchor");
-                    }
-                } else {
-                    this.reticle.visible = false;
-                    if (this.state === 'SCANNING') this.updateStatus("Scanning Surface...");
-                }
-            }
-
-            // Continuous Tracking Update
-            if (this.state === 'MARKING' && this.placedModels.length > 0) {
-                // The first model is our main hardware block
-                this.updateAngleCalculation(this.placedModels[0]);
-            }
+        if (this.state === 'MARKING') {
+            this.updateAngleCalculation();
         }
-
         this.renderer.render(this.scene, this.camera);
     }
 }
