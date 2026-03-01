@@ -65,18 +65,53 @@ class FlowARController {
     }
 
     createHardwareModel() {
-        const geometry = new THREE.BoxGeometry(0.3, 0.05, 0.5);
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x4caf50,
-            roughness: 0.7,
-            metalness: 0.2
+        // Create a compound object that looks like a Concealed Hinge
+        this.hardwareModel = new THREE.Group();
+
+        // 1. The Main Hinge Cup (Goes into the door)
+        const cupGeo = new THREE.CylinderGeometry(0.0175, 0.0175, 0.012, 32); // 35mm diameter cup
+        const metalMat = new THREE.MeshStandardMaterial({
+            color: 0xaaaaaa, // Silver/Steel
+            roughness: 0.3,
+            metalness: 0.8
         });
+        const cup = new THREE.Mesh(cupGeo, metalMat);
+        cup.rotation.x = Math.PI / 2; // Lay flat
+        this.hardwareModel.add(cup);
 
-        this.hardwareModel = new THREE.Mesh(geometry, material);
+        // 2. The Flanges/Wings (Where screws go)
+        const wingGeo = new THREE.BoxGeometry(0.06, 0.002, 0.015);
+        const wing = new THREE.Mesh(wingGeo, metalMat);
+        wing.position.set(0, 0.005, 0); // slightly above cup
+        this.hardwareModel.add(wing);
 
-        const edges = new THREE.EdgesGeometry(geometry);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f3ff, linewidth: 2 }));
-        this.hardwareModel.add(line);
+        // 3. The Arm
+        const armGeo = new THREE.BoxGeometry(0.012, 0.005, 0.08);
+        const arm = new THREE.Mesh(armGeo, metalMat);
+        arm.position.set(0, 0.005, -0.04);
+        this.hardwareModel.add(arm);
+
+        // 4. Target Hole Indicators (Visual guides for the user)
+        const targetMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.7 });
+        const ringGeo = new THREE.RingGeometry(0.003, 0.004, 16);
+
+        // Left Screw Hole Target
+        const leftHole = new THREE.Mesh(ringGeo, targetMat);
+        leftHole.rotation.x = -Math.PI / 2;
+        leftHole.position.set(-0.022, 0.007, 0);
+        this.hardwareModel.add(leftHole);
+
+        // Right Screw Hole Target
+        const rightHole = new THREE.Mesh(ringGeo, targetMat);
+        rightHole.rotation.x = -Math.PI / 2;
+        rightHole.position.set(0.022, 0.007, 0);
+        this.hardwareModel.add(rightHole);
+
+        // Arm Mounting Target
+        const backHole = new THREE.Mesh(ringGeo, targetMat);
+        backHole.rotation.x = -Math.PI / 2;
+        backHole.position.set(0, 0.007, -0.07);
+        this.hardwareModel.add(backHole);
 
         // Initially hide until AR starts
         this.hardwareModel.visible = false;
@@ -106,14 +141,14 @@ class FlowARController {
 
             // In POSITIONING state, attach the model exactly 0.5m in front of the camera
             // We do this by adding it to a pivot that follows the camera
-            this.hardwareModel.position.set(0, -0.1, -0.6); // 60cm away, slightly down
+            this.hardwareModel.position.set(0, -0.1, -0.4); // 40cm away
             this.camera.add(this.hardwareModel);
             this.scene.add(this.camera); // Ensure camera is in scene
 
             this.hardwareModel.visible = true;
 
             setTimeout(() => {
-                this.speak("Welcome. The hardware block forms instantly. Aim your camera at your desk and tap Place Here on your screen to anchor it.");
+                this.speak("Welcome. The metallic hinge forms instantly. Aim your camera at your desk and tap Place Here on your screen to anchor it.");
             }, 1000);
         });
 
@@ -168,32 +203,33 @@ class FlowARController {
         if (this.state !== 'POSITIONING') return;
 
         // Detach from camera and append directly to the world scene
-        // We capture its current world matrix before detaching
+        // We capture its precise current world matrix before detaching
         const worldPosition = new THREE.Vector3();
         const worldQuaternion = new THREE.Quaternion();
-        const worldScale = new THREE.Vector3();
 
         this.hardwareModel.getWorldPosition(worldPosition);
         this.hardwareModel.getWorldQuaternion(worldQuaternion);
-        this.hardwareModel.getWorldScale(worldScale);
 
         this.camera.remove(this.hardwareModel);
 
         this.hardwareModel.position.copy(worldPosition);
         this.hardwareModel.quaternion.copy(worldQuaternion);
-        this.hardwareModel.scale.copy(worldScale);
 
+        // Critical: Force scale to exactly 1 so it doesn't drift when camera moves
+        this.hardwareModel.scale.set(1, 1, 1);
+
+        // Attach to pure world space
         this.scene.add(this.hardwareModel);
 
         this.state = 'MARKING';
         this.updateStatus("Model Anchored");
-        this.setInstruction("Step 2: Mark Holes & Check Angle", "Tap on the surface of the green block to mark 3 drill holes. Observe the angle data.");
+        this.setInstruction("Step 2: Mark Holes", "Tap directly on the glowing blue hole targets on the hinge to mark them.");
 
         this.ui.btnPlace.classList.add('hidden');
         this.ui.btnReset.classList.remove('hidden');
         this.ui.dataPanel.classList.remove('hidden');
 
-        this.speak("Hardware Anchored. Step 2: Look at the data panel to ensure it is sitting flat, then tap the top of the block three times to mark your pilot holes.");
+        this.speak("Hardware Anchored. Step 2: Ensure it is sitting flat, then tap the three blue target rings to mark your pilot holes.");
     }
 
     onSelect() {
