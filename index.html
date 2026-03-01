@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>FlowAR - Professional Carpentry</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- The AR container is managed by Three.js, we just need a UI overlay -->
+    <div id="ui-layer">
+        <header>
+            <h1>FlowAR</h1>
+            <div id="status-badge" class="badge">Init...</div>
+        </header>
+
+        <div id="instruction-panel" class="glass-panel">
+            <h2 id="instruction-title">Step 1: Scan Desk</h2>
+            <p id="instruction-desc">Point your camera at a horizontal surface and move slowly until the white ring
+                appears.</p>
+        </div>
+
+        <!-- Floating Data Panel (Visible after placement) -->
+        <div id="data-panel" class="glass-panel hidden">
+            <div class="data-row">
+                <span>Angle (X):</span>
+                <span id="data-angle-x">0°</span>
+            </div>
+            <div class="data-row">
+                <span>Angle (Y):</span>
+                <span id="data-angle-y" class="success-text">0°</span>
+            </div>
+            <div class="data-row">
+                <span>Holes Marked:</span>
+                <span id="data-holes">0 / 3</span>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div id="action-controls" class="hidden">
+            <button id="btn-reset" class="btn-secondary">Reset Position</button>
+            <button id="btn-finish" class="btn-primary hidden">Complete Verification</button>
+        </div>
+    </div>
+
+    <!-- Import Map for Three.js ES Modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- Main Application Logic -->
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>

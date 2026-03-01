@@ -1,0 +1,195 @@
+:root {
+    --bg-dark: #0a0a0c;
+    --neon-blue: #00f3ff;
+    --neon-blue-glow: rgba(0, 243, 255, 0.4);
+    --neon-green: #00ff66;
+    --neon-red: #ff003c;
+    --glass-bg: rgba(15, 15, 20, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --text-main: #ffffff;
+    --text-dim: #a0a0a0;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: var(--font-ui);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+body,
+html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-dark);
+    /* Fallback before AR starts */
+}
+
+/* UI Overlay */
+#ui-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    /* Let touches hit the 3D canvas! */
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent);
+}
+
+h1 {
+    color: var(--text-main);
+    font-size: 22px;
+    font-weight: 700;
+    text-shadow: 0 0 10px var(--neon-blue-glow);
+}
+
+.badge {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--glass-border);
+}
+
+/* Glass Panels */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 15px;
+    color: var(--text-main);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+    /* Buttons inside should be clickable */
+}
+
+#instruction-panel {
+    border-left: 4px solid var(--neon-blue);
+    margin-top: 10px;
+}
+
+#instruction-title {
+    font-size: 18px;
+    color: var(--neon-blue);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#instruction-desc {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+
+/* Data Panel */
+#data-panel {
+    margin-top: auto;
+    margin-bottom: 90px;
+    padding: 15px;
+    border-radius: 12px;
+    align-self: flex-end;
+    width: 200px;
+}
+
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: var(--text-dim);
+}
+
+.data-row span:last-child {
+    font-weight: 600;
+    color: var(--text-main);
+    font-family: monospace;
+    font-size: 16px;
+}
+
+.success-text {
+    color: var(--neon-green) !important;
+}
+
+.error-text {
+    color: var(--neon-red) !important;
+}
+
+/* Controls */
+#action-controls {
+    position: absolute;
+    bottom: 30px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    pointer-events: auto;
+}
+
+button {
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 12px 24px;
+    border-radius: 25px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    border: none;
+    outline: none;
+}
+
+.btn-primary {
+    background: var(--neon-green);
+    color: var(--bg-dark);
+    box-shadow: 0 4px 15px rgba(0, 255, 102, 0.4);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-main);
+    border: 1px solid var(--text-main);
+    backdrop-filter: blur(5px);
+}
+
+button:active {
+    transform: scale(0.95);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* AR Button Overrides (Three.js injects its own button, we tweak it) */
+#ARButton {
+    background-color: var(--neon-blue) !important;
+    border-radius: 30px !important;
+    padding: 15px 30px !important;
+    font-weight: bold !important;
+    font-family: var(--font-ui) !important;
+    color: var(--bg-dark) !important;
+    bottom: 30px !important;
+}

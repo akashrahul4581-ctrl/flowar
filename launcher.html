@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Launch FlowAR on Mobile</title>
+    <style>
+        body {
+            background-color: #0a0a0c;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+
+        h1 {
+            color: #00f3ff;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #a0a0a0;
+            margin-bottom: 30px;
+            font-size: 18px;
+        }
+
+        .qr-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
+        }
+
+        .instructions {
+            margin-top: 30px;
+            background: rgba(15, 15, 20, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #mobile-url {
+            color: #00ff66;
+            font-weight: bold;
+            font-size: 20px;
+            margin-top: 10px;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Launch FlowAR Training</h1>
+    <p>Scan this QR code with your smartphone camera to start the AR simulation.</p>
+
+    <div class="qr-container">
+        <!-- We use a free public QR code generator API for the image -->
+        <img id="qr-image" src="" alt="QR Code" width="250" height="250">
+    </div>
+
+    <div class="instructions">
+        <p>Ensure your computer and phone are on the same Wi-Fi network.</p>
+        <div>Or type this URL manually into your mobile browser:</div>
+        <span id="mobile-url">Evaluating IP...</span>
+    </div>
+
+    <script>
+        // Use the IP address we found
+        const localIP = "10.10.24.144";
+        const port = "8000";
+        const targetUrl = `http://${localIP}:${port}/index.html`; // Point back to the actual AR app
+
+        document.getElementById('mobile-url').textContent = targetUrl;
+
+        // Use a reliable QR code generating service
+        const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(targetUrl)}`;
+        document.getElementById('qr-image').src = qrApi;
+    </script>
+</body>
+
+</html>
