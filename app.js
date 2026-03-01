@@ -62,7 +62,11 @@ class FlowARController {
 
     setupXR() {
         // Create the "Start AR" button injected by Three.js
-        const arButton = ARButton.createButton(this.renderer, { requiredFeatures: ['hit-test'] });
+        const arButton = ARButton.createButton(this.renderer, {
+            requiredFeatures: ['hit-test'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: document.getElementById('ui-layer') }
+        });
 
         // Browsers require a user interaction to unlock the Speech API.
         // We bind it to the AR session start button click.
@@ -298,18 +302,17 @@ class FlowARController {
 
             // Setup hit testing if not done
             if (this.hitTestSourceRequested === false) {
-                session.requestReferenceSpace('viewer').then((referenceSpace) => {
-                    session.requestHitTestSource({ space: referenceSpace }).then((source) => {
+                this.hitTestSourceRequested = true;
+                session.requestReferenceSpace('viewer').then((viewerSpace) => {
+                    session.requestHitTestSource({ space: viewerSpace }).then((source) => {
                         this.hitTestSource = source;
-                    });
-                });
+                    }).catch(console.error);
+                }).catch(console.error);
 
                 session.addEventListener('end', () => {
                     this.hitTestSourceRequested = false;
                     this.hitTestSource = null;
                 });
-
-                this.hitTestSourceRequested = true;
             }
 
             // Perform Hit Test
@@ -319,8 +322,12 @@ class FlowARController {
                 if (hitTestResults.length > 0 && this.state === 'SCANNING') {
                     const hit = hitTestResults[0];
                     this.reticle.visible = true;
-                    this.reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-                    this.updateStatus("Surface Detected - Tap to Anchor");
+                    // Safely get the pose
+                    const pose = hit.getPose(referenceSpace);
+                    if (pose) {
+                        this.reticle.matrix.fromArray(pose.transform.matrix);
+                        this.updateStatus("Surface Detected - Tap to Anchor");
+                    }
                 } else {
                     this.reticle.visible = false;
                     if (this.state === 'SCANNING') this.updateStatus("Scanning Surface...");
